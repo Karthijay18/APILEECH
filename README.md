@@ -3,6 +3,7 @@
 Chrome extension that captures API requests (including request and response bodies) and gives you copy-paste curl commands. It can **scrape content and messages** from sites (users, posts, comments, etc.) by parsing their API responses. History is kept in memory and can be exported to or imported from a JSON file so it does not fill browser storage.
 
 ---
+![Discord POC](poc/discordpoc.webm)
 ![TikTok](poc/fEMbAN9UaA.png)
 
 ## How it works
@@ -110,6 +111,7 @@ Request detail modal: generated curl (PS/CMD), Copy, and full document/response 
 ## License
 
 lmao
+
 
 
 
