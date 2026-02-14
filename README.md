@@ -17,7 +17,7 @@ The extension uses two layers to capture traffic:
 
 The background matches incoming body/response messages to the right request (by URL + method + timing) and merges them. So you end up with one request object that has: URL, method, headers (from webRequest), request body (from the page), and response body (from the page). For the main document load, the extension also captures the document HTML once the page fires `load` and attaches it as the response for the document request.
 
-The popup asks the background for the current request list, shows it in a list, and when you open a request it builds a curl command (PowerShell or CMD style) from the stored URL, method, headers, and body. You can copy that and run it in a terminal.
+The popup asks the background for the current request list, shows it in a list, and when you open a request it builds a curl command from the stored URL, method, headers, and body. You can choose **PowerShell**, **CMD**, or **Bash** (Linux/macOS) and copy the command to run in your terminal.
 
 ---
 
@@ -40,7 +40,7 @@ In DevTools, “Copy as cURL” uses what the browser’s network stack has. For
 
 - **Request body** – For fetch/XHR, the body you passed in JavaScript might not be represented the same way in the network log, or might be missing. This extension reads the body at the call site (in the page), so you get the exact string or serialized form the script used.  
 - **Response body** – You can inspect the response in DevTools, but it’s not part of the copied curl. Here, the response is captured and stored so you can see it in the same place as the request and copy it separately if needed.  
-- **Where curl runs** – The extension outputs `curl.exe ...` with quoting and escaping suitable for **PowerShell** or **CMD** on Windows. DevTools usually gives a curl line for a Unix shell; pasting that into PowerShell or CMD often breaks. The PS/CMD toggle in the request detail view switches between the two.  
+- **Where curl runs** – The extension outputs curl with quoting and escaping for your target shell. Use **PS** (PowerShell) or **CMD** (Command Prompt) on Windows, or **Bash** for Linux and macOS (standard `curl` with single-quoted args). The shell toggle in the request detail view switches between PS, CMD, and Bash.  
 - **Persistence** – Network tab state is per tab and goes away on refresh/close. This extension keeps a rolling list in memory (up to a few thousand requests) and you can export/import the list as JSON, so you can save a session and reopen it later without using browser storage for the bulk data.
 - **Normie friendly** - Even normies can download media from websites by using our intuitive GUI.
 
@@ -110,4 +110,5 @@ Request detail modal: generated curl (PS/CMD), Copy, and full document/response 
 ## License
 
 lmao
+
 
