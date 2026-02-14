@@ -971,7 +971,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('clearBtn').addEventListener('click', clearRequests);
   document.getElementById('exportHistoryBtn').addEventListener('click', () => exportHistoryToFile());
-  document.getElementById('importHistoryBtn').addEventListener('click', () => importHistoryFromFile());
 
   (function initRequestSearch() {
     const popup = document.getElementById('requestSearchPopup');
