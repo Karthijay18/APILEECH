@@ -4,7 +4,6 @@ Chrome extension that captures API requests (including request and response bodi
 
 ---
 ![Discord POC](poc/discordpoc.gif)
-![TikTok](poc/fEMbAN9UaA.png)
 
 ## How it works
 
@@ -99,6 +98,10 @@ Request detail modal: generated curl (PS/CMD), Copy, and full document/response 
 
 ![Request details and curl](poc/Vux7GtH0n7.png)
 
+![TikTok](poc/fEMbAN9UaA.png)
+
+Download TikTok videos, audio, and captions.
+
 ---
 
 ## Technical notes
@@ -111,6 +114,7 @@ Request detail modal: generated curl (PS/CMD), Copy, and full document/response 
 ## License
 
 lmao
+
 
 
 
