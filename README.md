@@ -129,4 +129,7 @@ Actively intercept possible endpoints hidden in Javascript.
 
 N/A
 
+## Contributors
+
+- [@mojidoji](https://github.com/mojidoji) - Feature implementation
 
