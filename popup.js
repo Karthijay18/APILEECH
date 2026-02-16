@@ -1,8 +1,11 @@
+const STATIC_FILTER_STORAGE_KEY = 'hideStaticResources';
+let hideStaticResources = true;
+
 (function() {
   const theme = localStorage.getItem('theme') || 'dark';
   document.documentElement.setAttribute('data-theme', theme);
 
-  chrome.storage.local.get(['theme', 'shellMode'], (result) => {
+  chrome.storage.local.get(['theme', 'shellMode', STATIC_FILTER_STORAGE_KEY], (result) => {
     if (result.theme && result.theme !== theme) {
       document.documentElement.setAttribute('data-theme', result.theme);
       localStorage.setItem('theme', result.theme);
@@ -13,6 +16,13 @@
       shellMode = result.shellMode;
       localStorage.setItem('shellMode', result.shellMode);
     }
+    if (typeof result[STATIC_FILTER_STORAGE_KEY] === 'boolean') {
+      hideStaticResources = result[STATIC_FILTER_STORAGE_KEY];
+    } else {
+      hideStaticResources = true;
+      chrome.storage.local.set({ [STATIC_FILTER_STORAGE_KEY]: true });
+    }
+    chrome.runtime.sendMessage({ action: 'setHideStaticResources', enabled: hideStaticResources }, () => {});
   });
 })();
 
@@ -37,6 +47,7 @@ let facebookRefreshInterval = null;
 let instagramRefreshInterval = null;
 let githubRefreshInterval = null;
 let pinterestRefreshInterval = null;
+let activeInterceptionRefreshInterval = null;
 let requestUrlSearchQuery = '';
 const requestFilterMethods = new Set();
 const requestFilterTypes = new Set();
@@ -50,6 +61,7 @@ const FACEBOOK_REFRESH_MS = 2000;
 const INSTAGRAM_REFRESH_MS = 2000;
 const GITHUB_REFRESH_MS = 2000;
 const PINTEREST_REFRESH_MS = 2000;
+const ACTIVE_INTERCEPTION_REFRESH_MS = 2000;
 let lastTwitterDataSignature = '';
 let lastTikTokDataSignature = '';
 let lastSoundCloudDataSignature = '';
@@ -59,6 +71,8 @@ let lastInstagramDataSignature = '';
 let lastGitHubDataSignature = '';
 let lastPinterestDataSignature = '';
 let instagramProfilePicBlobUrls = new Set();
+let activeInterceptionEntries = [];
+let activeInterceptionStats = { scriptsScanned: 0, endpointCount: 0, endpointHits: 0, updatedAt: null };
 
 function isGraphQLRequest(request) {
   if (!request.body || request.method !== 'POST') return false;
@@ -342,6 +356,48 @@ function generateCurlBash(request, method) {
   return cmd;
 }
 
+function generateCurlForMode(mode, request) {
+  const method = request.method ? request.method.toUpperCase().replace(/[^A-Z]/g, '') : 'GET';
+  if (mode === 'ps') return generateCurlPS(request, method);
+  if (mode === 'cmd') return generateCurlCMD(request, method);
+  return generateCurlBash(request, method);
+}
+
+function buildActiveEndpointRequest(entry) {
+  const method = (entry && entry.method ? String(entry.method) : 'GET').toUpperCase();
+  const headers = [{ name: 'Accept', value: 'application/json' }];
+  return {
+    url: entry && entry.url ? entry.url : (entry && entry.rawUrl ? entry.rawUrl : ''),
+    method: method || 'GET',
+    headers,
+    body: null
+  };
+}
+
+function formatLastSeen(value) {
+  if (!value) return 'just now';
+  const then = new Date(value).getTime();
+  if (!Number.isFinite(then)) return 'just now';
+  const diffMs = Date.now() - then;
+  if (diffMs < 5000) return 'just now';
+  if (diffMs < 60000) return `${Math.floor(diffMs / 1000)}s ago`;
+  if (diffMs < 3600000) return `${Math.floor(diffMs / 60000)}m ago`;
+  return `${Math.floor(diffMs / 3600000)}h ago`;
+}
+
+function copyTextWithButtonFeedback(text, btn) {
+  if (!btn) return;
+  navigator.clipboard.writeText(String(text || '')).then(() => {
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove('copied');
+    }, 1800);
+  });
+}
+
 function formatTime(ts) {
   return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
@@ -407,6 +463,8 @@ function renderRequests(requests) {
     renderCurrentTab(requests);
   } else if (currentView === 'twitter') {
     renderTwitterTab(requests);
+  } else if (currentView === 'activeInterception') {
+    renderActiveInterceptionTab();
   } else if (currentView === 'tiktok') {
     renderTikTokTab(requests);
   } else if (currentView === 'soundcloud') {
@@ -587,6 +645,122 @@ function renderHistoryTab(requests) {
   attachHistoryHandlers();
 }
 
+function renderActiveInterceptionTab() {
+  const container = document.getElementById('requestsContainer');
+  let entries = Array.isArray(activeInterceptionEntries) ? activeInterceptionEntries.slice() : [];
+
+  if (requestFilterMethods.size > 0) {
+    entries = entries.filter(entry => requestFilterMethods.has((entry.method || '').toUpperCase()));
+  }
+  if (requestUrlSearchQuery.trim()) {
+    const query = requestUrlSearchQuery.trim();
+    entries = entries.filter(entry => {
+      const sourceText = Array.isArray(entry.sourceScripts) ? entry.sourceScripts.join(' ') : '';
+      const matcherText = Array.isArray(entry.matchers) ? entry.matchers.join(' ') : '';
+      const searchable = `${entry.url || ''} ${entry.rawUrl || ''} ${sourceText} ${matcherText} ${entry.method || ''}`;
+      return matchRequestSearch({ url: searchable, responseBody: searchable }, query);
+    });
+  }
+
+  if (entries.length === 0) {
+    const scriptsScanned = Number(activeInterceptionStats && activeInterceptionStats.scriptsScanned) || 0;
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-text">
+          No active endpoint candidates yet.<br>
+          JS files scanned: <span style="color:var(--blue);font-weight:600">${scriptsScanned}</span>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const summary = `Scripts scanned: ${Number(activeInterceptionStats.scriptsScanned) || 0} | ` +
+    `Endpoint candidates: ${entries.length} | ` +
+    `Hits: ${Number(activeInterceptionStats.endpointHits) || 0}`;
+
+  const cardsHtml = entries.map((entry, idx) => {
+    const endpointRequest = buildActiveEndpointRequest(entry);
+    const commandPs = generateCurlForMode('ps', endpointRequest);
+    const sourceScripts = Array.isArray(entry.sourceScripts) ? entry.sourceScripts : [];
+    const sourcePreview = sourceScripts.slice(0, 3).join('\n');
+    const sourceMore = sourceScripts.length > 3 ? `\n+${sourceScripts.length - 3} more scripts` : '';
+    const matchers = Array.isArray(entry.matchers) ? entry.matchers.join(', ') : (entry.matcher || 'unknown');
+    const confidence = (entry.confidence || 'medium').toUpperCase();
+    const seenText = formatLastSeen(entry.lastSeen);
+    const snippet = entry.snippet ? `\nSnippet: ${entry.snippet}` : '';
+    const dynamicNote = entry.dynamic ? '\nDynamic URL: this candidate may require runtime values.' : '';
+    const cmdPreId = `activeEndpointCmd_${idx}`;
+
+    return `
+      <div class="active-endpoint-card" data-entry-index="${idx}">
+        <div class="active-endpoint-head">
+          <span class="active-endpoint-method">${escapeHtml(entry.method || 'GET')}</span>
+          <span class="active-endpoint-confidence active-endpoint-confidence-${escapeHtml((entry.confidence || 'medium').toLowerCase())}">${escapeHtml(confidence)} confidence</span>
+        </div>
+        <div class="active-endpoint-url">${escapeHtml(entry.url || entry.rawUrl || '')}</div>
+        <div class="active-endpoint-meta">Seen ${escapeHtml(seenText)} | Matches: ${escapeHtml(String(entry.occurrences || 1))} | Detector(s): ${escapeHtml(matchers)}
+Sources:
+${escapeHtml(sourcePreview + sourceMore + snippet + dynamicNote)}</div>
+        <div class="active-shell-container">
+          <div class="active-shell-header-row">
+            <div class="shell-toggle">
+              <button class="shell-btn active" data-mode="ps" data-entry-index="${idx}" title="PowerShell">PS</button>
+              <button class="shell-btn" data-mode="cmd" data-entry-index="${idx}" title="Command Prompt">CMD</button>
+              <button class="shell-btn" data-mode="bash" data-entry-index="${idx}" title="Linux / macOS (curl)">Bash</button>
+            </div>
+            <button class="copy-btn active-shell-copy" data-entry-index="${idx}">Copy</button>
+          </div>
+          <pre class="active-shell-command curl-command" id="${cmdPreId}">${escapeHtml(commandPs)}</pre>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="active-interception-panel">
+      <div class="active-interception-summary">${escapeHtml(summary)}</div>
+      ${cardsHtml}
+    </div>
+  `;
+
+  attachActiveInterceptionHandlers();
+}
+
+function attachActiveInterceptionHandlers() {
+  document.querySelectorAll('.active-endpoint-card .shell-btn[data-mode][data-entry-index]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = parseInt(btn.getAttribute('data-entry-index'), 10);
+      const mode = btn.getAttribute('data-mode');
+      if (!Number.isFinite(idx) || !mode || !activeInterceptionEntries[idx]) return;
+      const entry = activeInterceptionEntries[idx];
+      const request = buildActiveEndpointRequest(entry);
+      const command = generateCurlForMode(mode, request);
+      const card = btn.closest('.active-endpoint-card');
+      if (!card) return;
+      const pre = card.querySelector('.active-shell-command');
+      if (pre) pre.textContent = command;
+      card.querySelectorAll('.shell-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  document.querySelectorAll('.active-shell-copy').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = parseInt(btn.getAttribute('data-entry-index'), 10);
+      if (!Number.isFinite(idx)) return;
+      const card = btn.closest('.active-endpoint-card');
+      if (!card) return;
+      const pre = card.querySelector('.active-shell-command');
+      if (!pre) return;
+      copyTextWithButtonFeedback(pre.textContent || '', btn);
+    });
+  });
+}
+
 function attachCardHandlers() {
   document.querySelectorAll('.combined-card').forEach(c => {
     c.addEventListener('click', (e) => {
@@ -750,9 +924,29 @@ function getActiveTab() {
   });
 }
 
+function loadActiveInterceptionData(done) {
+  chrome.runtime.sendMessage({ action: 'getActiveInterceptionData', tabId: activeTabId }, (response) => {
+    if (response && Array.isArray(response.entries)) {
+      activeInterceptionEntries = response.entries;
+      activeInterceptionStats = response.stats || { scriptsScanned: 0, endpointCount: response.entries.length, endpointHits: 0, updatedAt: null };
+    } else {
+      activeInterceptionEntries = [];
+      activeInterceptionStats = { scriptsScanned: 0, endpointCount: 0, endpointHits: 0, updatedAt: null };
+    }
+    if (typeof done === 'function') done();
+  });
+}
+
 function loadRequests() {
   chrome.runtime.sendMessage({ action: 'getRequests' }, r => {
-    if (r && r.requests) { currentRequests = r.requests; renderRequests(currentRequests); }
+    if (r && r.requests) {
+      currentRequests = r.requests;
+      if (currentView === 'activeInterception') {
+        loadActiveInterceptionData(() => renderRequests(currentRequests));
+      } else {
+        renderRequests(currentRequests);
+      }
+    }
   });
 }
 
@@ -852,9 +1046,29 @@ function startPinterestRefresh() {
   pinterestRefreshInterval = setInterval(loadRequests, PINTEREST_REFRESH_MS);
 }
 
+function stopActiveInterceptionRefresh() {
+  if (activeInterceptionRefreshInterval) {
+    clearInterval(activeInterceptionRefreshInterval);
+    activeInterceptionRefreshInterval = null;
+  }
+}
+
+function startActiveInterceptionRefresh() {
+  stopActiveInterceptionRefresh();
+  activeInterceptionRefreshInterval = setInterval(() => {
+    loadRequests();
+  }, ACTIVE_INTERCEPTION_REFRESH_MS);
+}
+
 function clearRequests() {
   chrome.runtime.sendMessage({ action: 'clearRequests' }, r => {
-    if (r && r.success) { currentRequests = []; combinedRequestsCache = []; renderRequests(currentRequests); }
+    if (r && r.success) {
+      currentRequests = [];
+      combinedRequestsCache = [];
+      activeInterceptionEntries = [];
+      activeInterceptionStats = { scriptsScanned: 0, endpointCount: 0, endpointHits: 0, updatedAt: null };
+      renderRequests(currentRequests);
+    }
   });
 }
 
@@ -950,7 +1164,7 @@ function switchShellMode(mode) {
 document.addEventListener('DOMContentLoaded', () => {
   updateThemeIcon();
   loadShellMode();
-  
+
   document.getElementById('requestsContainer').addEventListener('click', (e) => {
     const img = e.target.closest('img');
     if (img && img.src) {
@@ -1041,6 +1255,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const filterBtn = document.getElementById('filterRequestsBtn');
     const methodsEl = document.getElementById('filterMethodsOptions');
     const typesEl = document.getElementById('filterTypesOptions');
+    const hideStaticEl = document.getElementById('filterHideStatic');
     if (!filterPopup || !filterBtn || !methodsEl || !typesEl) return;
 
     methodsEl.innerHTML = FILTER_METHODS.map(m => {
@@ -1054,6 +1269,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const checked = requestFilterTypes.has(t) ? ' checked' : '';
       return `<label><input type="checkbox" id="${id}" data-type="${t}"${checked}>${label}</label>`;
     }).join('');
+
+    function syncHideStaticCheckbox() {
+      if (hideStaticEl) hideStaticEl.checked = hideStaticResources;
+    }
 
     filterPopup.querySelectorAll('input[data-method]').forEach(cb => {
       cb.addEventListener('change', () => {
@@ -1070,10 +1289,31 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
+    if (hideStaticEl) {
+      syncHideStaticCheckbox();
+      hideStaticEl.addEventListener('change', () => {
+        hideStaticResources = hideStaticEl.checked;
+        chrome.storage.local.set({ [STATIC_FILTER_STORAGE_KEY]: hideStaticResources });
+        chrome.runtime.sendMessage({ action: 'setHideStaticResources', enabled: hideStaticResources }, () => {
+          loadRequests();
+        });
+      });
+    }
+
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName !== 'local') return;
+      const change = changes[STATIC_FILTER_STORAGE_KEY];
+      if (!change || typeof change.newValue !== 'boolean' || change.newValue === hideStaticResources) return;
+      hideStaticResources = change.newValue;
+      syncHideStaticCheckbox();
+      loadRequests();
+    });
+
     filterBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       document.getElementById('requestSearchPopup').classList.remove('visible');
       filterPopup.classList.toggle('visible');
+      if (filterPopup.classList.contains('visible')) syncHideStaticCheckbox();
     });
     document.addEventListener('click', (e) => {
       if (filterPopup.classList.contains('visible') && !filterPopup.contains(e.target) && !filterBtn.contains(e.target)) {
@@ -1092,6 +1332,23 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('shellPS').addEventListener('click', () => switchShellMode('ps'));
   document.getElementById('shellCMD').addEventListener('click', () => switchShellMode('cmd'));
   document.getElementById('shellBash').addEventListener('click', () => switchShellMode('bash'));
+
+  const tabsRoot = document.querySelector('.tabs');
+  if (tabsRoot) {
+    tabsRoot.addEventListener('click', (e) => {
+      const btn = e.target.closest('.tab-btn');
+      if (!btn) return;
+      tabsRoot.querySelectorAll('.tab-btn').forEach(tabBtn => {
+        tabBtn.classList.toggle('active', tabBtn === btn);
+      });
+      if (btn.id !== 'discordTabBtn') {
+        document.getElementById('discordToolbar').style.display = 'none';
+      }
+      if (btn.id !== 'activeInterceptionTabBtn') {
+        stopActiveInterceptionRefresh();
+      }
+    });
+  }
 
   document.getElementById('currentTabBtn').addEventListener('click', () => {
     currentView = 'current';
@@ -1155,6 +1412,29 @@ document.addEventListener('DOMContentLoaded', () => {
     lastGitHubDataSignature = '';
     lastPinterestDataSignature = '';
     renderRequests(currentRequests);
+  });
+
+  document.getElementById('activeInterceptionTabBtn').addEventListener('click', () => {
+    currentView = 'activeInterception';
+    document.getElementById('discordToolbar').style.display = 'none';
+    stopTwitterRefresh();
+    stopTikTokRefresh();
+    stopSoundCloudRefresh();
+    stopDiscordRefresh();
+    stopFacebookRefresh();
+    stopInstagramRefresh();
+    stopGitHubRefresh();
+    stopPinterestRefresh();
+    lastTwitterDataSignature = '';
+    lastTikTokDataSignature = '';
+    lastSoundCloudDataSignature = '';
+    lastDiscordDataSignature = '';
+    lastFacebookDataSignature = '';
+    lastInstagramDataSignature = '';
+    lastGitHubDataSignature = '';
+    lastPinterestDataSignature = '';
+    startActiveInterceptionRefresh();
+    loadActiveInterceptionData(() => renderRequests(currentRequests));
   });
 
   document.getElementById('twitterTabBtn').addEventListener('click', () => {
@@ -1421,4 +1701,5 @@ window.addEventListener('pagehide', () => {
   stopInstagramRefresh();
   stopGitHubRefresh();
   stopPinterestRefresh();
+  stopActiveInterceptionRefresh();
 });
