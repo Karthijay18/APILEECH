@@ -5,6 +5,8 @@ Chromium (Chrome, Edge, Opera, Brave, etc) extension that captures API requests 
 ---
 ![Discord POC](poc/discordpoc.gif)
 
+[Try APILEECH in Microsoft Edge Right Now!](https://microsoftedge.microsoft.com/addons/detail/apileech/cmbobajnibidgjppebnfcpleaifcenjk)
+
 ## How it works
 
 The extension uses two layers to capture traffic:
@@ -132,4 +134,5 @@ N/A
 ## Contributors
 
 - [@mojidoji](https://github.com/mojidoji) - Feature implementation
+
 
