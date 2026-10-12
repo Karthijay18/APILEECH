@@ -833,7 +833,7 @@ function showRequestDetails(request) {
     infoSection.style.display = 'block';
     infoSection.querySelector('.info-content').innerHTML =
       `<strong>${request._combinedCount} queries merged using GraphQL aliases:</strong><br>` +
-      request._descriptions.map(d => `&nbsp;&nbsp;• ${d}`).join('<br>') +
+      request._descriptions.map(d => `&nbsp;&nbsp;• ${escapeHtml(d)}`).join('<br>') +
       '<br><br><em>Response data will be under keys q0, q1, q2, etc.</em>';
   } else {
     infoSection.style.display = 'none';
